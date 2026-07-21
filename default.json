@@ -34,7 +34,6 @@
   ],
   "vulnerabilityAlerts": {
     "labels": ["security"],
-    "assignees": ["@me"],
-    "automerge": true
+    "assignees": ["tobias-dev"]
   }
 }
