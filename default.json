@@ -22,11 +22,6 @@
       "groupName": "dependency updates (minor)"
     },
     {
-      "description": "Keep major updates in a separate group",
-      "matchUpdateTypes": ["major"],
-      "groupName": "dependency updates (major)"
-    },
-    {
       "description": "Digest-pin Dockerfile base images; the digest auto-merge rule keeps them current",
       "matchManagers": ["dockerfile"],
       "pinDigests": true
