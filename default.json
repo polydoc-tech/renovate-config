@@ -8,6 +8,7 @@
   "schedule": ["before 3am on Monday"],
   "timezone": "UTC",
   "dependencyDashboardLabels": ["stays-open"],
+  "platformAutomerge": false,
   "packageRules": [
     {
       "description": "Auto-merge patch and digest updates",
