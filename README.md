@@ -1,7 +1,6 @@
 # renovate-config
 
-Shared [Renovate](https://docs.renovatebot.com/) preset for all PolyDoc repositories
-(core services under `tobias-dev/pdoc-*` and connectors under `polydoc-tech/*-polydoc`).
+Shared [Renovate](https://docs.renovatebot.com/) preset for the PolyDoc repositories.
 
 Each repo's `renovate.json` extends this preset instead of duplicating the policy:
 
