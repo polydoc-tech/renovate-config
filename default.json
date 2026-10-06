@@ -5,8 +5,9 @@
     ":dependencyDashboard",
     ":semanticCommits"
   ],
-  "schedule": ["before 3am on Monday"],
+  "schedule": ["on Monday"],
   "timezone": "UTC",
+  "prHourlyLimit": 0,
   "dependencyDashboardLabels": ["stays-open"],
   "platformAutomerge": false,
   "packageRules": [
