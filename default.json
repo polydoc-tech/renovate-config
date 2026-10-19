@@ -28,6 +28,17 @@
       "description": "Digest-pin Dockerfile base images; the digest auto-merge rule keeps them current",
       "matchManagers": ["dockerfile"],
       "pinDigests": true
+    },
+    {
+      "description": "No major bumps of resolutions entries. A resolution is a security floor inside the major its dependents ask for, so moving it across a major forces every dependent onto a major none of them requested. In a repo with file: siblings Renovate also cannot install, so it moves only the range and the lockfile stays put. This also stops Renovate's [security] PRs for such a major; Dependabot alerts are unaffected. Move a resolution across a major by hand.",
+      "matchDepTypes": ["resolutions"],
+      "matchUpdateTypes": ["major"],
+      "enabled": false
+    },
+    {
+      "description": "Hold the Sentry SDKs below 11. Sentry 11 drops sendDefaultPii and, when dataCollection is not set, infers the client IP. Lift this together with an explicit dataCollection setting in every repo that uses Sentry.",
+      "matchPackageNames": ["@sentry/**"],
+      "allowedVersions": "<11"
     }
   ],
   "vulnerabilityAlerts": {
