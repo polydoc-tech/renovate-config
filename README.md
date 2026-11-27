@@ -73,3 +73,14 @@ node scripts/check-action-pin-rules.mjs judge /tmp/renovate-dry-run.ndjson
 ```
 
 The build directory has to sit outside any git checkout.
+
+The validator also cannot tell a working custom manager from one whose file pattern matches
+nothing in any repo. So CI clones every polydoc-tech repo that is neither a fork nor archived,
+and `scripts/check-custom-managers.mjs` fails when a marker comment is not read by a manager,
+or an `npm install -g npm@` line has no marker above it. Locally, with the repos checked out
+next to this one:
+
+```sh
+node --test scripts/check-custom-managers.test.mjs
+node scripts/check-custom-managers.mjs ../activepieces-polydoc ../polydoc-mcp
+```

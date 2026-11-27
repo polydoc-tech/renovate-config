@@ -58,5 +58,36 @@ jobs:
         if: ${{ !cancelled() }}
         run: node scripts/check-action-pin-rules.mjs judge "$RUNNER_TEMP/renovate-dry-run.ndjson"
 
+      - name: Test the check on the custom managers
+        if: ${{ !cancelled() }}
+        run: node --test scripts/check-custom-managers.test.mjs
+
+      # The validator only reads this repo, so it cannot tell a working custom manager from
+      # one whose file pattern matches nothing in any consuming repo. Forks are third-party
+      # code that does not extend this preset, and this repo's README quotes the marker.
+      - name: Clone the repos this preset applies to
+        id: clone
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api --paginate '/users/polydoc-tech/repos?per_page=100' \
+            --jq '.[] | select((.archived or .fork) | not) | .name' \
+            | grep -vx 'renovate-config' > "$RUNNER_TEMP/consumers.txt"
+          test -s "$RUNNER_TEMP/consumers.txt"
+          while read -r repo; do
+            git clone --depth 1 --quiet "https://github.com/polydoc-tech/$repo.git" \
+              "$RUNNER_TEMP/consumers/$repo"
+          done < "$RUNNER_TEMP/consumers.txt"
+          echo "cloned $(wc -l < "$RUNNER_TEMP/consumers.txt") repositories"
+
+      # Each directory by name: a glob would skip `.github`.
+      - name: Every marker comment is read, every npm pin carries one
+        if: ${{ !cancelled() && steps.clone.outcome == 'success' }}
+        run: |
+          mapfile -t dirs < <(sed "s|^|$RUNNER_TEMP/consumers/|" "$RUNNER_TEMP/consumers.txt")
+          node scripts/check-custom-managers.mjs "${dirs[@]}"
+
   guard:
     uses: polydoc-tech/.github/.github/workflows/guard.yml@f965127030d3124e119f4bd012e32f0768de2441 # main
