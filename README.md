@@ -56,8 +56,9 @@ on the line above, which the custom manager in `default.json` reads:
   run: npm install -g npm@<version>
 ```
 
-An update of that pin never merges itself. npm runs in the one job that can mint the publish
-token, so a person merges each npm CLI bump. It takes a branch of its own,
+An update of such a pin, in `ci.yml` or `release.yml`, never merges itself. In a release
+workflow npm runs in the one job that can mint the publish token, so a person merges each npm
+CLI bump. It takes a branch of its own,
 `renovate/npm-cli` (`renovate/major-npm-cli` for a major), so it does not hold back the
 patch group.
 

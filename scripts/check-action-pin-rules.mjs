@@ -188,7 +188,7 @@ function judge({ lookup, branches }) {
   if ((npmPin.updates ?? []).some((u) => u.updateType === 'patch')) {
     passes.push(`the lookup offers a patch update for the ${NPM} pin (${npmPin.currentValue})`)
   } else {
-    failures.push(`the lookup offers no patch update for the ${NPM} pin in ${NPM_PIN}, so nothing shows that the rule is what keeps it from merging itself`)
+    failures.push(`the lookup offers no patch update for the ${NPM} pin in ${NPM_PIN} (${npmPin.currentValue}), so nothing shows that the rule is what keeps it from merging itself; the fixture assumes the newest release of that major is a patch of it`)
   }
 
   // 5. Each of its updates waits for a person, on a branch of its own: a branch merges itself

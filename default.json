@@ -74,7 +74,7 @@
       "groupName": "dependency updates (minor)"
     },
     {
-      "description": "A person merges every update of the npm CLI pin in release workflows. That npm runs in the one job that can mint the publish token, and the three-day minimum release age is the only other gate. It takes a branch of its own, because a branch merges itself only when every update in it may, so in the patch group it would hold back every other patch. It has to sit below the patch and minor rules to win.",
+      "description": "A person merges every update of an npm CLI pin the custom manager reads, in ci.yml and release.yml alike. In a release workflow that npm runs in the one job that can mint the publish token, and the three-day minimum release age is the only other gate. It takes a branch of its own, because a branch merges itself only when every update in it may, so in the patch group it would hold back every other patch. It has to sit below the patch and minor rules to win.",
       "matchManagers": [
         "custom.regex"
       ],

@@ -50,7 +50,7 @@ const guardUpgrade = (over = {}) => ({
 })
 const npmFile = (updates = [{ updateType: 'patch' }, { updateType: 'major' }]) => ({
   packageFile: NPM_FILE,
-  deps: [{ depName: 'npm', datasource: 'npm', currentValue: '10.9.0', updates }],
+  deps: [{ depName: 'npm', datasource: 'npm', currentValue: '9.9.0', updates }],
 })
 const npmUpgrade = (over = {}) => ({
   depName: 'npm',
@@ -292,4 +292,5 @@ test('a run in which the custom manager read no npm pin cannot be judged', () =>
 
   const elsewhere = judge({ ...holds, npm: [{ ...npmFile(), packageFile: '.github/workflows/ci.yml' }] })
   assert.equal(elsewhere.code, 2)
+  assert.match(elsewhere.err, /the custom manager read no npm pin from \.github\/workflows\/release\.yml/)
 })
