@@ -1,0 +1,13 @@
+name: npm CLI pin
+on: workflow_dispatch
+permissions: {}
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      # The custom manager reads only files named ci.yml or release.yml. npm 9 is past end of
+      # life and its last release is 9.9.4, so the newest npm 9 for 9.9.0 is a patch, the
+      # update type the auto-merge rule takes.
+      - name: Upgrade npm
+        # renovate: datasource=npm depName=npm
+        run: npm install -g npm@9.9.0

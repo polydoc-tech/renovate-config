@@ -30,9 +30,9 @@ jobs:
         run: npx --yes --package renovate renovate-config-validator --strict default.json
 
       # The validator accepts a rule that matches nothing, so it stays green when an edit
-      # turns digest updates for actions back on, or stops the polydoc-tech/.github pin. The
-      # next four steps run Renovate itself over the workflows in test/action-pins and check
-      # those two things in what it would open.
+      # turns digest updates for actions back on, stops the polydoc-tech/.github pin, or lets
+      # the npm CLI pin merge itself. The next four steps run Renovate itself over the
+      # workflows in test/action-pins and check those three things in what it would open.
       - name: Test the check on the Actions pin rules
         run: node --test scripts/check-action-pin-rules.test.mjs
 
@@ -50,11 +50,11 @@ jobs:
           GITHUB_COM_TOKEN: ${{ github.token }}
         run: >-
           npx --yes --package renovate renovate --platform=local
-          --enabled-managers=github-actions > "$RUNNER_TEMP/renovate-dry-run.ndjson"
+          --enabled-managers=github-actions,custom.regex > "$RUNNER_TEMP/renovate-dry-run.ndjson"
 
       # Runs after a failed dry run too: Renovate exits 1 when it logged an error, its
       # output went to the file, and this step prints the warnings and errors from it.
-      - name: No digest update for an action, and the guard pin still moves
+      - name: No digest update for an action, the guard pin still moves, a person merges npm
         if: ${{ !cancelled() }}
         run: node scripts/check-action-pin-rules.mjs judge "$RUNNER_TEMP/renovate-dry-run.ndjson"
 

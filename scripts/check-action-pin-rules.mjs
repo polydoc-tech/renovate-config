@@ -1,12 +1,14 @@
 #!/usr/bin/env node
-// Proves on a Renovate dry run that default.json's rules for GitHub Actions pins still hold:
-// Renovate does not follow a release tag to another commit, and the polydoc-tech/.github pin,
-// which follows a branch on purpose, still moves and merges itself.
+// Proves on a Renovate dry run that default.json's rules for the pins in workflows still hold:
+// Renovate does not follow a release tag to another commit, the polydoc-tech/.github pin,
+// which follows a branch on purpose, still moves and merges itself, and an update of the npm
+// CLI pin waits for a person on a branch of its own.
 //
 // renovate-config-validator checks that default.json is well formed. It accepts a rule that
 // matches nothing, so it stays green when a later edit scopes or orders these rules another
-// way. Either mistake is silent in every repo that extends the preset: digest updates for
-// actions come back and merge themselves, or the guard pin stops moving.
+// way. Each mistake is silent in every repo that extends the preset: digest updates for
+// actions come back and merge themselves, the guard pin stops moving, or a new npm CLI
+// reaches a publish job with no person having looked at it.
 //
 // Two steps, with the Renovate run between them left to the caller:
 //
@@ -18,7 +20,8 @@
 //     Renovate lists only the files git tracks there and finds none.
 //
 //   node scripts/check-action-pin-rules.mjs judge <log>
-//     Reads the JSON log of `renovate --platform=local --enabled-managers=github-actions`,
+//     Reads the JSON log of
+//     `renovate --platform=local --enabled-managers=github-actions,custom.regex`,
 //     run in <dir> with LOG_LEVEL=trace and LOG_FORMAT=json. The record of the branches
 //     Renovate would open is written at trace level only. Prints the message of every
 //     warning and error Renovate logged, because the caller sent its output to the file.
@@ -44,6 +47,11 @@ const PLANTED = '.github/workflows/01-tag-moved-off-the-pin.yml'
 
 const ACTION_TYPES = new Set(['action', 'workflow'])
 
+// The npm CLI pin, read by the custom manager, which reads only files named ci.yml or
+// release.yml. Renovate's log names that manager `regex`.
+const NPM_PIN = '.github/workflows/release.yml'
+const NPM = 'npm'
+
 class CannotRun extends Error {}
 
 async function build(dir) {
@@ -54,7 +62,9 @@ async function build(dir) {
   if ((await readdir(dir).catch(() => [])).length > 0) throw new CannotRun(`${dir} is not empty`)
   await mkdir(workflows, { recursive: true })
   const cases = (await readdir(FIXTURE)).filter((f) => f.endsWith('.yml')).sort()
-  if (!cases.some((f) => PLANTED.endsWith(`/${f}`))) throw new CannotRun(`the fixture has no ${PLANTED}`)
+  for (const needed of [PLANTED, NPM_PIN]) {
+    if (!cases.some((f) => needed.endsWith(`/${f}`))) throw new CannotRun(`the fixture has no ${needed}`)
+  }
   for (const file of cases) await copyFile(new URL(file, FIXTURE), join(workflows, file))
   await writeFile(join(dir, 'renovate.json'), `${JSON.stringify(config, null, 2)}\n`)
   console.log(`wrote ${cases.length} workflows and renovate.json to ${dir}`)
@@ -124,12 +134,19 @@ function judge({ lookup, branches }) {
   )
   const planted = deps.find((d) => d.packageFile === PLANTED && ACTION_TYPES.has(d.depType))
   const guard = deps.find((d) => d.depName === GUARD)
+  const npmPin = (lookup.config?.regex ?? [])
+    .filter((file) => file.packageFile === NPM_PIN)
+    .flatMap((file) => file.deps ?? [])
+    .find((d) => d.depName === NPM)
   // A run that read no workflow must not pass as "no digest update anywhere".
   if (!planted || !guard) {
     throw new CannotRun(
       `Renovate extracted ${deps.length} dependencies and not both the planted pin and the ${GUARD} pin; ` +
         'was it run in the directory `build` wrote, outside any git checkout?',
     )
+  }
+  if (!npmPin) {
+    throw new CannotRun(`the custom manager read no ${NPM} pin from ${NPM_PIN}; was Renovate run with --enabled-managers=github-actions,custom.regex?`)
   }
 
   // 1. Without this the next check passes on a run that never saw a digest update.
@@ -165,6 +182,36 @@ function judge({ lookup, branches }) {
   } else {
     passes.push(`branch ${moved.branch.branchName} holds the digest update of the ${GUARD} pin, not pending, with auto-merge on`)
   }
+
+  // 4. The npm CLI pin. Without a patch update in the lookup, nothing shows that the rule is
+  // what keeps it from merging itself: the auto-merge rule takes patch updates.
+  if ((npmPin.updates ?? []).some((u) => u.updateType === 'patch')) {
+    passes.push(`the lookup offers a patch update for the ${NPM} pin (${npmPin.currentValue})`)
+  } else {
+    failures.push(`the lookup offers no patch update for the ${NPM} pin in ${NPM_PIN} (${npmPin.currentValue}), so nothing shows that the rule is what keeps it from merging itself; the fixture assumes the newest release of that major is a patch of it`)
+  }
+
+  // 5. Each of its updates waits for a person, on a branch of its own: a branch merges itself
+  // only when every update in it may, so in a group it would hold back the rest.
+  const npmUpgrades = upgrades.filter((u) => u.depName === NPM && u.packageFile === NPM_PIN)
+  const npmFailures = []
+  if (!npmUpgrades.some((u) => u.updateType === 'patch')) {
+    npmFailures.push(`no branch holds the patch update of the ${NPM} pin: the pin would stop moving`)
+  }
+  for (const u of npmUpgrades) {
+    if (u.automerge === true || u.branch.automerge === true) {
+      npmFailures.push(`the ${u.updateType} update of the ${NPM} pin in ${u.branch.branchName} merges itself`)
+    }
+    const others = (u.branch.upgrades ?? []).filter((o) => o.depName !== NPM || o.packageFile !== NPM_PIN)
+    if (others.length > 0) {
+      npmFailures.push(`the ${u.updateType} update of the ${NPM} pin shares ${u.branch.branchName} with ${others.length} other update(s)`)
+    }
+  }
+  if (npmFailures.length === 0) {
+    const held = npmUpgrades.map((u) => `${u.updateType} in ${u.branch.branchName}`).join(', ')
+    passes.push(`the ${NPM} pin's updates sit alone with auto-merge off (${held})`)
+  }
+  failures.push(...npmFailures)
 
   return { passes, failures }
 }
