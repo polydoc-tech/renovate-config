@@ -3,46 +3,132 @@
   "extends": [
     "config:recommended",
     ":dependencyDashboard",
-    ":semanticCommits"
+    ":semanticCommits",
+    "security:minimumReleaseAgeNpm",
+    "security:minimumReleaseAgePypi",
+    "helpers:pinGitHubActionDigestsToSemver"
   ],
-  "schedule": ["on Monday"],
+  "schedule": [
+    "on Monday"
+  ],
   "timezone": "UTC",
   "prHourlyLimit": 0,
-  "dependencyDashboardLabels": ["stays-open"],
+  "dependencyDashboard": {
+    "labels": [
+      "stays-open"
+    ]
+  },
   "platformAutomerge": false,
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Release workflows pin the npm CLI itself with `npm install -g npm@<version>`, so a publish cannot silently move to a newly released npm. No built-in manager reads a version inside a `run:` line, so each such line carries a marker comment directly above it (`# renovate: datasource=npm depName=npm`), and this manager reads the version from the line below the marker. `scripts/check-custom-managers.mjs` fails when a marker cannot be read or an `npm install -g npm@` line carries no marker. Scoped to `ci.yml` and `release.yml`. An npm major arrives as its own PR; merging one means checking npm's `engines` against each workflow's `node-version`.",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/ci\\.ya?ml$/",
+        "/^\\.github/workflows/release\\.ya?ml$/"
+      ],
+      "matchStrings": [
+        "renovate: datasource=(?<datasource>[a-z-]+?) depName=(?<depName>[a-z0-9@/._-]+?)\\s+[^\\n]*?(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ]
+    }
+  ],
   "packageRules": [
     {
+      "description": "Pin every GitHub Action to a full commit SHA. A tag is mutable: whoever can move `v4` can run their code inside a workflow that holds publish rights. Scoped to the github-actions manager and to five dep types in it: actions, reusable workflows, `docker://` steps, and the images under `container:` and `services:`. A version typed into a `with:` input (dep type `uses-with`) is left alone, because a commit digest is not a valid value there. `helpers:pinGitHubActionDigestsToSemver` in `extends` sets the same for actions and reusable workflows; the three image types are pinned by this rule alone.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchDepTypes": [
+        "action",
+        "workflow",
+        "container",
+        "service",
+        "docker"
+      ],
+      "pinDigests": true
+    },
+    {
       "description": "Auto-merge patch and digest updates",
-      "matchUpdateTypes": ["patch", "digest"],
+      "matchUpdateTypes": [
+        "patch",
+        "digest"
+      ],
       "automerge": true,
       "automergeType": "pr",
       "automergeStrategy": "squash",
       "groupName": "dependency updates (patches)"
     },
     {
+      "description": "The polydoc-tech/.github pin takes a branch of its own. The pin decides which guard checks every pull request in the repo runs, so it moves once its own PR is green, not only when every patch in the repo's group is. It stays a digest update, so the patch and digest rule above still merges it. It has to sit below that rule to win.",
+      "matchDepNames": [
+        "polydoc-tech/.github"
+      ],
+      "groupName": "polydoc-tech/.github workflows",
+      "groupSlug": "polydoc-tech-github-workflows"
+    },
+    {
       "description": "Group minor updates for review",
-      "matchUpdateTypes": ["minor"],
+      "matchUpdateTypes": [
+        "minor"
+      ],
       "groupName": "dependency updates (minor)"
     },
     {
       "description": "Digest-pin Dockerfile base images; the digest auto-merge rule keeps them current",
-      "matchManagers": ["dockerfile"],
+      "matchManagers": [
+        "dockerfile"
+      ],
       "pinDigests": true
     },
     {
       "description": "No major bumps of resolutions entries. A resolution is a security floor inside the major its dependents ask for, so moving it across a major forces every dependent onto a major none of them requested. In a repo with file: siblings Renovate also cannot install, so it moves only the range and the lockfile stays put. This also stops Renovate's [security] PRs for such a major; Dependabot alerts are unaffected. Move a resolution across a major by hand.",
-      "matchDepTypes": ["resolutions"],
-      "matchUpdateTypes": ["major"],
+      "matchDepTypes": [
+        "resolutions"
+      ],
+      "matchUpdateTypes": [
+        "major"
+      ],
       "enabled": false
     },
     {
       "description": "Hold the Sentry SDKs below 11. Sentry 11 drops sendDefaultPii and, when dataCollection is not set, infers the client IP. Lift this together with an explicit dataCollection setting in every repo that uses Sentry.",
-      "matchPackageNames": ["@sentry/**"],
+      "matchPackageNames": [
+        "@sentry/**"
+      ],
       "allowedVersions": "<11"
+    },
+    {
+      "description": "No digest update for an action or a reusable workflow. Under `helpers:pinGitHubActionDigestsToSemver` the trailing comment holds the full version (`# v7.0.1`), so a digest update means the tag now points at another commit than the pinned one. A release tag is not meant to move, and following it would undo the pin. A new release still arrives as a patch, minor or major update, which moves the commit and the comment together. The polydoc-tech/.github pin is left out by name: it follows the `main` branch on purpose, and its digest update is how a change to the guard reaches a repo.",
+      "matchDepTypes": [
+        "action",
+        "workflow"
+      ],
+      "matchDepNames": [
+        "!polydoc-tech/.github"
+      ],
+      "matchUpdateTypes": [
+        "digest"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "A release of an action or a reusable workflow is offered once it is three days old, the length `security:minimumReleaseAgeNpm` and `security:minimumReleaseAgePypi` set for npm and PyPI. Those presets match their own datasources only, so Actions need this rule. The polydoc-tech/.github pin is left out by name: it follows a branch, a branch has no release date, and Renovate holds an update it cannot date.",
+      "matchDepTypes": [
+        "action",
+        "workflow"
+      ],
+      "matchDepNames": [
+        "!polydoc-tech/.github"
+      ],
+      "minimumReleaseAge": "3 days"
     }
   ],
   "vulnerabilityAlerts": {
-    "labels": ["security"],
-    "assignees": ["tobias-dev"]
+    "labels": [
+      "security"
+    ],
+    "assignees": [
+      "tobias-dev"
+    ]
   }
 }

@@ -9,5 +9,54 @@ permissions:
   contents: read
 
 jobs:
-  public-scrub:
-    uses: polydoc-tech/.github/.github/workflows/public-scrub.yml@main
+  presets:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # npx installs the newest Renovate whose `engines` accept the Node it runs under, so the
+      # Node here decides how far the validator can lag behind the hosted app.
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26'
+
+      # Deliberately unpinned. The validator's job is to reject config the bot will reject,
+      # so it should track whatever Renovate the hosted Mend app is running rather than a
+      # version frozen here.
+      - name: Validate the preset
+        run: npx --yes --package renovate renovate-config-validator --strict default.json
+
+      # The validator accepts a rule that matches nothing, so it stays green when an edit
+      # turns digest updates for actions back on, or stops the polydoc-tech/.github pin. The
+      # next four steps run Renovate itself over the workflows in test/action-pins and check
+      # those two things in what it would open.
+      - name: Test the check on the Actions pin rules
+        run: node --test scripts/check-action-pin-rules.test.mjs
+
+      - name: Build a repo from the Actions pin fixture
+        run: node scripts/check-action-pin-rules.mjs build "$RUNNER_TEMP/action-pins"
+
+      # Unpinned like the validator. `--platform=local` reads the directory and writes
+      # nothing. Without a token Renovate does not look up the tags of an action on
+      # github.com. The log stays on the runner: at trace level it is over 100 MB.
+      - name: Dry-run Renovate over it
+        working-directory: ${{ runner.temp }}/action-pins
+        env:
+          LOG_LEVEL: trace
+          LOG_FORMAT: json
+          GITHUB_COM_TOKEN: ${{ github.token }}
+        run: >-
+          npx --yes --package renovate renovate --platform=local
+          --enabled-managers=github-actions > "$RUNNER_TEMP/renovate-dry-run.ndjson"
+
+      # Runs after a failed dry run too: Renovate exits 1 when it logged an error, its
+      # output went to the file, and this step prints the warnings and errors from it.
+      - name: No digest update for an action, and the guard pin still moves
+        if: ${{ !cancelled() }}
+        run: node scripts/check-action-pin-rules.mjs judge "$RUNNER_TEMP/renovate-dry-run.ndjson"
+
+  guard:
+    uses: polydoc-tech/.github/.github/workflows/guard.yml@f965127030d3124e119f4bd012e32f0768de2441 # main
