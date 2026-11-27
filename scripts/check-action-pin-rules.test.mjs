@@ -29,6 +29,8 @@ const PLANTED = '.github/workflows/01-tag-moved-off-the-pin.yml'
 const GUARD_FILE = '.github/workflows/04-guard-pin.yml'
 const GUARD_BRANCH = 'renovate/polydoc-tech-github-workflows'
 const PATCHES = 'renovate/dependency-updates-(patches)'
+const NPM_FILE = '.github/workflows/release.yml'
+const NPM_BRANCH = 'renovate/npm-cli'
 
 const plantedDep = (updates) => ({
   packageFile: PLANTED,
@@ -46,6 +48,18 @@ const guardUpgrade = (over = {}) => ({
   packageFile: GUARD_FILE,
   ...over,
 })
+const npmFile = (updates = [{ updateType: 'patch' }, { updateType: 'major' }]) => ({
+  packageFile: NPM_FILE,
+  deps: [{ depName: 'npm', datasource: 'npm', currentValue: '10.9.0', updates }],
+})
+const npmUpgrade = (over = {}) => ({
+  depName: 'npm',
+  manager: 'regex',
+  updateType: 'patch',
+  automerge: false,
+  packageFile: NPM_FILE,
+  ...over,
+})
 // A Docker image's digest update and an action's patch update: both belong in a branch.
 const patchesBranch = (...more) => ({
   branchName: PATCHES,
@@ -56,15 +70,25 @@ const patchesBranch = (...more) => ({
   ],
 })
 
+const npmBranches = [
+  { branchName: NPM_BRANCH, automerge: false, upgrades: [npmUpgrade()] },
+  { branchName: 'renovate/major-npm-cli', automerge: false, upgrades: [npmUpgrade({ updateType: 'major' })] },
+]
+
 const holds = {
   files: [plantedDep([{ updateType: 'digest', newDigest: '3d3c42e5aa' }]), guardDep],
-  branches: [{ branchName: GUARD_BRANCH, upgrades: [guardUpgrade()] }, patchesBranch()],
+  npm: [npmFile()],
+  branches: [{ branchName: GUARD_BRANCH, upgrades: [guardUpgrade()] }, patchesBranch(), ...npmBranches],
 }
+const lookupRecord = (files = holds.files, npm = holds.npm) => ({
+  msg: 'packageFiles with updates',
+  config: { 'github-actions': files, regex: npm },
+})
 
-function judge({ files, branches }, { records } = {}) {
+function judge({ files, npm = holds.npm, branches }, { records } = {}) {
   const lines = records ?? [
     { msg: 'Renovate started', renovateVersion: '44.145.1' },
-    { msg: 'packageFiles with updates', config: { 'github-actions': files } },
+    lookupRecord(files, npm),
     { msg: 'branches', branches },
   ]
   const path = join(mkdtempSync(join(work, 'log-')), 'renovate.ndjson')
@@ -81,6 +105,7 @@ test('build writes every fixture workflow and default.json', () => {
   assert.deepEqual(readdirSync(join(dir, '.github', 'workflows')).sort(), fixture)
   assert.ok(fixture.includes(PLANTED.split('/').pop()))
   assert.ok(fixture.includes(GUARD_FILE.split('/').pop()))
+  assert.ok(fixture.includes(NPM_FILE.split('/').pop()))
 
   const { $schema: _schema, ...base } = readJson('default.json')
   const config = JSON.parse(readFileSync(join(dir, 'renovate.json'), 'utf8'))
@@ -100,7 +125,7 @@ test('a run in which the rules hold passes and names the Renovate version', () =
   const r = judge(holds)
   assert.equal(r.code, 0, r.err)
   assert.match(r.out, /^Renovate 44\.145\.1$/m)
-  assert.equal(r.out.match(/^ok {4}/gm).length, 3)
+  assert.equal(r.out.match(/^ok {4}/gm).length, 5)
 })
 
 test('a digest update of an action in a branch fails', () => {
@@ -149,7 +174,7 @@ test('a log without the branches record cannot be judged', () => {
   const r = judge(holds, {
     records: [
       { msg: 'Renovate started', renovateVersion: '44.145.1' },
-      { msg: 'packageFiles with updates', config: { 'github-actions': holds.files } },
+      lookupRecord(),
     ],
   })
   assert.equal(r.code, 2)
@@ -178,7 +203,7 @@ test('the messages of warnings and errors are printed, and nothing else of them'
       warning,
       warning,
       { level: 50, msg: 'lookup failed' },
-      { level: 20, msg: 'packageFiles with updates', config: { 'github-actions': holds.files } },
+      { level: 20, ...lookupRecord() },
       { level: 10, msg: 'branches', branches: holds.branches },
     ],
   })
@@ -198,7 +223,7 @@ test('build refuses a path that is a file', () => {
 })
 
 test('a run that extracted no dependency cannot be judged', () => {
-  const r = judge({ files: [], branches: [] })
+  const r = judge({ files: [], npm: [], branches: [] })
   assert.equal(r.code, 2)
   assert.match(r.err, /extracted 0 dependencies/)
 })
@@ -207,10 +232,64 @@ test('a record that only carries the message name deeper down is not read as tha
   const r = judge(holds, {
     records: [
       { msg: 'Renovate started', renovateVersion: '44.145.1' },
-      { msg: 'packageFiles with updates', config: { 'github-actions': holds.files } },
+      lookupRecord(),
       { msg: 'branches', branches: holds.branches },
       { msg: 'something else', nested: { msg: 'branches', branches: [] } },
     ],
   })
   assert.equal(r.code, 0, r.err)
+})
+
+const withoutNpmBranches = holds.branches.filter((b) => !b.branchName.includes('npm-cli'))
+
+test('the npm pin in the auto-merging patch group fails twice', () => {
+  // What default.json did before the npm CLI rule.
+  const r = judge({ ...holds, branches: [...withoutNpmBranches.filter((b) => b.branchName !== PATCHES), { ...patchesBranch(npmUpgrade({ automerge: true })), automerge: true }, npmBranches[1]] })
+  assert.equal(r.code, 1)
+  assert.match(r.err, /the patch update of the npm pin in renovate\/dependency-updates-\(patches\) merges itself/)
+  assert.match(r.err, /the patch update of the npm pin shares renovate\/dependency-updates-\(patches\) with 2 other update\(s\)/)
+})
+
+test('an npm pin update that merges itself fails, on the upgrade or on its branch', () => {
+  const onUpgrade = judge({ ...holds, branches: [...withoutNpmBranches, { branchName: NPM_BRANCH, upgrades: [npmUpgrade({ automerge: true })] }] })
+  assert.equal(onUpgrade.code, 1)
+  assert.match(onUpgrade.err, /the patch update of the npm pin in renovate\/npm-cli merges itself/)
+
+  const major = judge({ ...holds, branches: [...withoutNpmBranches, npmBranches[0], { branchName: 'renovate/major-npm-cli', automerge: true, upgrades: [npmUpgrade({ updateType: 'major' })] }] })
+  assert.equal(major.code, 1)
+  assert.match(major.err, /the major update of the npm pin in renovate\/major-npm-cli merges itself/)
+})
+
+test('an npm pin update that shares its branch fails, even with auto-merge off', () => {
+  const other = { depName: 'actions/setup-node', depType: 'action', updateType: 'minor', automerge: false }
+  const r = judge({ ...holds, branches: [...withoutNpmBranches, { branchName: NPM_BRANCH, automerge: false, upgrades: [npmUpgrade(), other] }] })
+  assert.equal(r.code, 1)
+  assert.match(r.err, /shares renovate\/npm-cli with 1 other update\(s\)/)
+})
+
+test('an npm pin with no patch update in any branch fails', () => {
+  const r = judge({ ...holds, branches: [...withoutNpmBranches, npmBranches[1]] })
+  assert.equal(r.code, 1)
+  assert.match(r.err, /no branch holds the patch update of the npm pin/)
+})
+
+test('an npm pin the lookup offers no patch update for fails', () => {
+  const r = judge({ ...holds, npm: [npmFile([{ updateType: 'major' }])] })
+  assert.equal(r.code, 1)
+  assert.match(r.err, /offers no patch update for the npm pin/)
+})
+
+test('a run in which the custom manager read no npm pin cannot be judged', () => {
+  const none = judge({ ...holds, npm: undefined }, {
+    records: [
+      { msg: 'Renovate started', renovateVersion: '44.145.1' },
+      { msg: 'packageFiles with updates', config: { 'github-actions': holds.files } },
+      { msg: 'branches', branches: holds.branches },
+    ],
+  })
+  assert.equal(none.code, 2)
+  assert.match(none.err, /the custom manager read no npm pin from \.github\/workflows\/release\.yml/)
+
+  const elsewhere = judge({ ...holds, npm: [{ ...npmFile(), packageFile: '.github/workflows/ci.yml' }] })
+  assert.equal(elsewhere.code, 2)
 })

@@ -1,0 +1,13 @@
+name: npm CLI pin
+on: workflow_dispatch
+permissions: {}
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      # The custom manager reads only files named ci.yml or release.yml. npm keeps releasing
+      # patches on its 10.9 line, so the lookup offers a patch update for 10.9.0, the update
+      # type the auto-merge rule takes.
+      - name: Upgrade npm
+        # renovate: datasource=npm depName=npm
+        run: npm install -g npm@10.9.0

@@ -56,19 +56,25 @@ on the line above, which the custom manager in `default.json` reads:
   run: npm install -g npm@<version>
 ```
 
+An update of that pin never merges itself. npm runs in the one job that can mint the publish
+token, so a person merges each npm CLI bump. It takes a branch of its own,
+`renovate/npm-cli` (`renovate/major-npm-cli` for a major), so it does not hold back the
+patch group.
+
 ### Checking the rules
 
 The validator accepts a rule that matches nothing. So `.github/workflows/ci.yml` also runs
 Renovate itself, on the local platform, over the workflows in `test/action-pins/workflows`,
 and `scripts/check-action-pin-rules.mjs` checks what it would open: no digest update for an
-action, and the guard pin still moves and merges itself. Locally:
+action, the guard pin still moves and merges itself, and the npm CLI pin's updates sit alone
+with auto-merge off. Locally:
 
 ```sh
 node --test scripts/check-action-pin-rules.test.mjs
 node scripts/check-action-pin-rules.mjs build /tmp/action-pins
 (cd /tmp/action-pins && LOG_LEVEL=trace LOG_FORMAT=json \
   npx --yes --package renovate renovate --platform=local \
-  --enabled-managers=github-actions > /tmp/renovate-dry-run.ndjson)
+  --enabled-managers=github-actions,custom.regex > /tmp/renovate-dry-run.ndjson)
 node scripts/check-action-pin-rules.mjs judge /tmp/renovate-dry-run.ndjson
 ```
 
