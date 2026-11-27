@@ -1,0 +1,6 @@
+name: case 4
+on: workflow_dispatch
+permissions: {}
+jobs:
+  guard:
+    uses: polydoc-tech/.github/.github/workflows/guard.yml@fa64c3ecef27f11d76bdc6c380a6f4d813907c73 # main
