@@ -63,8 +63,9 @@ jobs:
         run: node --test scripts/check-custom-managers.test.mjs
 
       # The validator only reads this repo, so it cannot tell a working custom manager from
-      # one whose file pattern matches nothing in any consuming repo. Forks are third-party
-      # code that does not extend this preset, and this repo's README quotes the marker.
+      # one whose file pattern matches nothing in any consuming repo. The job's token lists
+      # and clones public repos only. Forks are third-party code that does not extend this
+      # preset, and this repo's README quotes the marker.
       - name: Clone the repos this preset applies to
         id: clone
         if: ${{ !cancelled() }}

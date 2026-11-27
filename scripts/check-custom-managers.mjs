@@ -7,8 +7,8 @@
 // nothing. That gap is what this script closes.
 //
 // Usage: node scripts/check-custom-managers.mjs <repo-dir> [<repo-dir> ...]
-// CI clones every polydoc-tech repo the preset applies to and passes them all; see
-// .github/workflows/ci.yml.
+// CI clones every public polydoc-tech repo that is neither a fork nor archived and passes
+// them all; see .github/workflows/ci.yml.
 
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { basename, join, relative } from 'node:path'
@@ -84,8 +84,9 @@ async function walk(dir, base = dir, out = []) {
 }
 
 function matchesIn(manager, content) {
-  // A fresh regex per call: /g carries lastIndex between uses.
-  return [...content.matchAll(new RegExp(manager.raw, 'g'))]
+  // A fresh regex per call: /g carries lastIndex between uses. /d records where each group
+  // matched, which ties an npm pin to the marker that reads it.
+  return [...content.matchAll(new RegExp(manager.raw, 'gd'))]
 }
 
 async function checkRepo(repoDir) {
@@ -126,13 +127,20 @@ async function checkRepo(repoDir) {
       markedSites += read.size
     }
 
-    for (const [, version] of content.matchAll(NPM_PIN)) {
+    for (const pin of content.matchAll(NPM_PIN)) {
       npmPins += 1
-      const site = claiming.flatMap((m) => matchesIn(m, content)).find((x) => x.groups?.currentValue === version)
+      const version = pin[1]
+      const versionAt = pin.index + pin[0].length - version.length
+      const line = content.slice(0, pin.index).split('\n').length
+      // By position, not by version: two pins of one version in a file must each have a
+      // marker of their own.
+      const site = claiming
+        .flatMap((m) => matchesIn(m, content))
+        .find((x) => markers.includes(x.index) && x.indices.groups?.currentValue?.[0] === versionAt)
       if (!site) {
-        fail(repo, file, `pins npm@${version} in a run: line that no manager reads; add a marker comment above it`)
+        fail(repo, file, `pins npm@${version} on line ${line} in a run: line that no manager reads; add a marker comment above it`)
       } else if (site.groups.depName !== 'npm' || site.groups.datasource !== 'npm') {
-        fail(repo, file, `the marker above npm@${version} reads ${site.groups.datasource}/${site.groups.depName}, not npm/npm`)
+        fail(repo, file, `the marker above npm@${version} on line ${line} reads ${site.groups.datasource}/${site.groups.depName}, not npm/npm`)
       }
     }
   }

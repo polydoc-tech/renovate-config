@@ -6,10 +6,11 @@ import { spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { after, test } from 'node:test'
 import assert from 'node:assert/strict'
 
-const SCRIPT = new URL('./check-custom-managers.mjs', import.meta.url).pathname
+const SCRIPT = fileURLToPath(new URL('./check-custom-managers.mjs', import.meta.url))
 
 const work = mkdtempSync(join(tmpdir(), 'custom-managers-test-'))
 after(() => rmSync(work, { recursive: true, force: true }))
@@ -45,7 +46,21 @@ test('an npm pin without a marker fails', () => {
     repo({ '.github/workflows/release.yml': step(null, 'npm install -g npm@12.2.3') }),
   )
   assert.equal(r.code, 1, r.out)
-  assert.match(r.out, /release\.yml: pins npm@12\.2\.3 in a run: line that no manager reads/)
+  assert.match(r.out, /release\.yml: pins npm@12\.2\.3 on line 5 in a run: line that no manager reads/)
+})
+
+test('a second pin of the same version needs a marker of its own', () => {
+  const r = run(repo({ '.github/workflows/release.yml': MARKED + step(null, 'npm install -g npm@12.2.3') }))
+  assert.equal(r.code, 1, r.out)
+  assert.match(r.out, /pins npm@12\.2\.3 on line 11 in a run: line that no manager reads/)
+  assert.doesNotMatch(r.out, /on line 6/)
+})
+
+test('a pin is judged by its own marker, not by an earlier one that reads the same version', () => {
+  const pnpm = step('renovate: datasource=npm depName=pnpm', 'npm install -g pnpm@12.2.3')
+  const r = run(repo({ '.github/workflows/release.yml': pnpm + MARKED }))
+  assert.equal(r.code, 0, r.out)
+  assert.match(r.out, /ok: 2 marker comment\(s\) read, 1 npm pin\(s\) covered/)
 })
 
 test('a marker in a workflow outside the manager file patterns fails', () => {
@@ -69,7 +84,7 @@ test('a marker naming another package above the npm pin fails', () => {
     '.github/workflows/release.yml': step('renovate: datasource=npm depName=pnpm', 'npm install -g npm@12.2.3'),
   }))
   assert.equal(r.code, 1, r.out)
-  assert.match(r.out, /the marker above npm@12\.2\.3 reads npm\/pnpm, not npm\/npm/)
+  assert.match(r.out, /the marker above npm@12\.2\.3 on line 6 reads npm\/pnpm, not npm\/npm/)
 })
 
 test('a run that finds no marker and no pin fails', () => {
